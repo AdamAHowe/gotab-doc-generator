@@ -18,33 +18,46 @@
     .subtitle { color: #666; margin-top: 0; margin-bottom: 24px; }
     label { font-weight: bold; display: block; margin: 16px 0 6px; }
     input[type="text"] {
-      width: 100%; padding: 10px 12px;
-      border: 1px solid #ddd; border-radius: 6px;
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
       font-size: 14px;
     }
     textarea {
-      width: 100%; height: 320px;
-      font-family: monospace; font-size: 13px;
-      padding: 12px; border: 1px solid #ddd;
-      border-radius: 6px; resize: vertical;
+      width: 100%;
+      height: 320px;
+      font-family: monospace;
+      font-size: 13px;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      resize: vertical;
     }
     .btn-row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
     button {
-      background: #f16a22; color: white;
-      border: none; padding: 11px 26px;
-      font-size: 15px; border-radius: 6px;
-      cursor: pointer; font-weight: bold;
+      background: #f16a22;
+      color: white;
+      border: none;
+      padding: 11px 26px;
+      font-size: 15px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
     }
     button:hover { background: #d4591a; }
     button:disabled { background: #ccc; cursor: not-allowed; }
     button.secondary {
-      background: #fff; color: #f16a22;
+      background: #fff;
+      color: #f16a22;
       border: 2px solid #f16a22;
     }
     button.secondary:hover { background: #fff4ef; }
     #status {
-      margin-top: 20px; padding: 16px;
-      border-radius: 8px; display: none;
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 8px;
+      display: none;
       line-height: 1.6;
     }
     #status.success { background: #e6f4ea; border: 1px solid #34a853; color: #1a5c2a; }
@@ -70,72 +83,117 @@
     placeholder="Paste the full JSON response from Claude here..."></textarea>
 
   <div class="btn-row">
-    <button id="submit-btn" onclick="submitDocs()">
-      Submit to Google Drive
-    </button>
-    <button class="secondary" onclick="clearForm()">
-      Clear
-    </button>
+    <button id="submit-btn" onclick="submitDocs()">Submit to Google Drive</button>
+    <button class="secondary" onclick="clearForm()">Clear</button>
   </div>
 
   <div id="status"></div>
 
   <script>
-    const urlInput = document.getElementById('apps-script-url');
-    const saved = localStorage.getItem('gotab_apps_script_url');
+    // Auto-save and restore the Apps Script URL
+    var urlInput = document.getElementById('apps-script-url');
+    var saved = localStorage.getItem('gotab_apps_script_url');
     if (saved) {
       urlInput.value = saved;
       urlInput.insertAdjacentHTML('afterend',
         '<p class="saved-url">✓ URL restored from last session</p>');
     }
-    urlInput.addEventListener('change', () => {
+    urlInput.addEventListener('change', function() {
       localStorage.setItem('gotab_apps_script_url', urlInput.value.trim());
     });
 
-    async function submitDocs() {
-      const url       = urlInput.value.trim();
-      const jsonInput = document.getElementById('json-input').value.trim();
-      const btn       = document.getElementById('submit-btn');
-      const status    = document.getElementById('status');
+    function submitDocs() {
+      var url = urlInput.value.trim();
+      var jsonInput = document.getElementById('json-input').value.trim();
+      var btn = document.getElementById('submit-btn');
+      var statusEl = document.getElementById('status');
 
-      status.style.display = 'none';
+      statusEl.style.display = 'none';
 
-      if (!url) { alert('Please enter your Apps Script Web App URL.'); return; }
-      if (!jsonInput) { alert('Please paste Claude\'s JSON output.'); return; }
-
-      let parsed;
-      try {
-        parsed = JSON.parse(jsonInput);
-      } catch(e) {
-        showStatus('error',
-          '❌ Invalid JSON. Make sure you copied Claude\'s complete response without any extra text.');
+      if (!url) {
+        alert('Please enter your Apps Script Web App URL.');
+        return;
+      }
+      if (!jsonInput) {
+        alert('Please paste Claude\'s JSON output.');
         return;
       }
 
-      btn.disabled    = true;
+      var parsed;
+      try {
+        parsed = JSON.parse(jsonInput);
+      } catch (e) {
+        showStatus('error', '❌ Invalid JSON. Make sure you copied Claude\'s complete response without any extra text.');
+        return;
+      }
+
+      btn.disabled = true;
       btn.textContent = 'Submitting...';
 
-      try {
-        const res    = await fetch(url, {
-          method:  'POST',
-          body:    JSON.stringify(parsed),
-          headers: { 'Content-Type': 'application/json' }
-          headers: { 'Content-Type': 'text/plain' },
-          redirect: 'follow',
-          mode: 'cors'
-        });
-        const result = await res.json();
-        const text = await res.text();
-        let result;
+      fetch(url, {
+        method: 'POST',
+        body: JSON.stringify(parsed),
+        headers: { 'Content-Type': 'text/plain' },
+        redirect: 'follow',
+        mode: 'cors'
+      })
+      .then(function(res) {
+        return res.text();
+      })
+      .then(function(text) {
+        var result;
         try {
           result = JSON.parse(text);
-        } catch(parseErr) {
-          throw new Error('Could not parse response from Apps Script. Raw response: ' + text.slice(0, 200));
+        } catch (parseErr) {
+          throw new Error('Could not parse Apps Script response: ' + text.slice(0, 300));
         }
-        if (result.error) throw new Error(result.error);
+        if (result.error) {
+          throw new Error(result.error);
+        }
 
-        let html = `✅ <strong>${result.feature}</strong> processed successfully.<br><br>`;
-        html    += `📁 <a href="${result.folder_url}" target="_blank">Open Google Drive Folder</a><br><br>`;
+        var html = '✅ <strong>' + result.feature + '</strong> processed successfully.<br><br>';
+        html += '📁 <a href="' + result.folder_url + '" target="_blank">Open Google Drive Folder</a><br><br>';
+
+        result.results.forEach(function(r) {
+          var icon = r.action === 'created' ? '🆕' : r.action === 'updated' ? '✏️' : '⏭️';
+          html += '<div class="result-row">' + icon + ' <strong>' + r.doc + ' — ' + r.title + '</strong>: ' + r.action;
+          if (r.url) { html += ' — <a href="' + r.url + '" target="_blank">Open</a>'; }
+          if (r.reason) { html += ' <em>(' + r.reason + ')</em>'; }
+          html += '</div>';
+        });
+
+        if (result.clarifying_questions && result.clarifying_questions.length > 0) {
+          html += '<br>⚠️ <strong>Claude flagged these questions:</strong><ul>';
+          result.clarifying_questions.forEach(function(q) {
+            html += '<li>' + q + '</li>';
+          });
+          html += '</ul>';
+        }
+
+        showStatus('success', html);
+        document.getElementById('json-input').value = '';
+      })
+      .catch(function(e) {
+        showStatus('error', '❌ Submission failed: ' + e.message);
+      })
+      .finally(function() {
+        btn.disabled = false;
+        btn.textContent = 'Submit to Google Drive';
+      });
+    }
+
+    function clearForm() {
+      document.getElementById('json-input').value = '';
+      document.getElementById('status').style.display = 'none';
+    }
+
+    function showStatus(type, html) {
+      var el = document.getElementById('status');
+      el.className = type;
+      el.innerHTML = html;
+      el.style.display = 'block';
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   </script>
 
 </body>
