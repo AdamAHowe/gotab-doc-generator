@@ -81,7 +81,6 @@
   <div id="status"></div>
 
   <script>
-    // Auto-save and restore the Apps Script URL
     const urlInput = document.getElementById('apps-script-url');
     const saved = localStorage.getItem('gotab_apps_script_url');
     if (saved) {
@@ -121,51 +120,22 @@
           method:  'POST',
           body:    JSON.stringify(parsed),
           headers: { 'Content-Type': 'application/json' }
+          headers: { 'Content-Type': 'text/plain' },
+          redirect: 'follow',
+          mode: 'cors'
         });
         const result = await res.json();
+        const text = await res.text();
+        let result;
+        try {
+          result = JSON.parse(text);
+        } catch(parseErr) {
+          throw new Error('Could not parse response from Apps Script. Raw response: ' + text.slice(0, 200));
+        }
         if (result.error) throw new Error(result.error);
 
         let html = `✅ <strong>${result.feature}</strong> processed successfully.<br><br>`;
         html    += `📁 <a href="${result.folder_url}" target="_blank">Open Google Drive Folder</a><br><br>`;
-
-        result.results.forEach(r => {
-          const icon = r.action === 'created' ? '🆕'
-                     : r.action === 'updated' ? '✏️' : '⏭️';
-          html += `<div class="result-row">${icon} <strong>${r.doc} — ${r.title}</strong>: ${r.action}`;
-          if (r.url)    html += ` — <a href="${r.url}" target="_blank">Open</a>`;
-          if (r.reason) html += ` <em>(${r.reason})</em>`;
-          html += '</div>';
-        });
-
-        if (result.clarifying_questions?.length > 0) {
-          html += '<br>⚠️ <strong>Claude flagged these questions before finalizing:</strong><ul>';
-          result.clarifying_questions.forEach(q => { html += `<li>${q}</li>`; });
-          html += '</ul>';
-        }
-
-        showStatus('success', html);
-        document.getElementById('json-input').value = '';
-
-      } catch(e) {
-        showStatus('error', `❌ Submission failed: ${e.message}`);
-      } finally {
-        btn.disabled    = false;
-        btn.textContent = 'Submit to Google Drive';
-      }
-    }
-
-    function clearForm() {
-      document.getElementById('json-input').value = '';
-      document.getElementById('status').style.display = 'none';
-    }
-
-    function showStatus(type, html) {
-      const el      = document.getElementById('status');
-      el.className  = type;
-      el.innerHTML  = html;
-      el.style.display = 'block';
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
   </script>
 
 </body>
