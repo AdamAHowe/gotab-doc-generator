@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GoTab Doc Generator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 820px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+      color: #222;
+    }
+    h1 { color: #f16a22; margin-bottom: 4px; }
+    .subtitle { color: #666; margin-top: 0; margin-bottom: 24px; }
+    label { font-weight: bold; display: block; margin: 16px 0 6px; }
+    input[type="text"] {
+      width: 100%; padding: 10px 12px;
+      border: 1px solid #ddd; border-radius: 6px;
+      font-size: 14px;
+    }
+    textarea {
+      width: 100%; height: 320px;
+      font-family: monospace; font-size: 13px;
+      padding: 12px; border: 1px solid #ddd;
+      border-radius: 6px; resize: vertical;
+    }
+    .btn-row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+    button {
+      background: #f16a22; color: white;
+      border: none; padding: 11px 26px;
+      font-size: 15px; border-radius: 6px;
+      cursor: pointer; font-weight: bold;
+    }
+    button:hover { background: #d4591a; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    button.secondary {
+      background: #fff; color: #f16a22;
+      border: 2px solid #f16a22;
+    }
+    button.secondary:hover { background: #fff4ef; }
+    #status {
+      margin-top: 20px; padding: 16px;
+      border-radius: 8px; display: none;
+      line-height: 1.6;
+    }
+    #status.success { background: #e6f4ea; border: 1px solid #34a853; color: #1a5c2a; }
+    #status.error   { background: #fce8e6; border: 1px solid #ea4335; color: #c62828; }
+    .result-row { margin: 5px 0; font-size: 14px; }
+    a { color: #f16a22; }
+    .hint { font-size: 12px; color: #888; margin-top: 4px; }
+    .saved-url { font-size: 12px; color: #34a853; margin-top: 4px; }
+  </style>
+</head>
+<body>
+
+  <h1>⚡ GoTab Doc Generator</h1>
+  <p class="subtitle">Paste Claude's JSON output to create or update documents in Google Drive.</p>
+
+  <label for="apps-script-url">Apps Script Web App URL</label>
+  <input type="text" id="apps-script-url"
+    placeholder="https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec">
+  <p class="hint">This is saved in your browser automatically after first use.</p>
+
+  <label for="json-input">Claude JSON Output</label>
+  <textarea id="json-input"
+    placeholder="Paste the full JSON response from Claude here..."></textarea>
+
+  <div class="btn-row">
+    <button id="submit-btn" onclick="submitDocs()">
+      Submit to Google Drive
+    </button>
+    <button class="secondary" onclick="clearForm()">
+      Clear
+    </button>
+  </div>
+
+  <div id="status"></div>
+
+  <script>
+    // Auto-save and restore the Apps Script URL
+    const urlInput = document.getElementById('apps-script-url');
+    const saved = localStorage.getItem('gotab_apps_script_url');
+    if (saved) {
+      urlInput.value = saved;
+      urlInput.insertAdjacentHTML('afterend',
+        '<p class="saved-url">✓ URL restored from last session</p>');
+    }
+    urlInput.addEventListener('change', () => {
+      localStorage.setItem('gotab_apps_script_url', urlInput.value.trim());
+    });
+
+    async function submitDocs() {
+      const url       = urlInput.value.trim();
+      const jsonInput = document.getElementById('json-input').value.trim();
+      const btn       = document.getElementById('submit-btn');
+      const status    = document.getElementById('status');
+
+      status.style.display = 'none';
+
+      if (!url) { alert('Please enter your Apps Script Web App URL.'); return; }
+      if (!jsonInput) { alert('Please paste Claude\'s JSON output.'); return; }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(jsonInput);
+      } catch(e) {
+        showStatus('error',
+          '❌ Invalid JSON. Make sure you copied Claude\'s complete response without any extra text.');
+        return;
+      }
+
+      btn.disabled    = true;
+      btn.textContent = 'Submitting...';
+
+      try {
+        const res    = await fetch(url, {
+          method:  'POST',
+          body:    JSON.stringify(parsed),
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const result = await res.json();
+        if (result.error) throw new Error(result.error);
+
+        let html = `✅ <strong>${result.feature}</strong> processed successfully.<br><br>`;
+        html    += `📁 <a href="${result.folder_url}" target="_blank">Open Google Drive Folder</a><br><br>`;
+
+        result.results.forEach(r => {
+          const icon = r.action === 'created' ? '🆕'
+                     : r.action === 'updated' ? '✏️' : '⏭️';
+          html += `<div class="result-row">${icon} <strong>${r.doc} — ${r.title}</strong>: ${r.action}`;
+          if (r.url)    html += ` — <a href="${r.url}" target="_blank">Open</a>`;
+          if (r.reason) html += ` <em>(${r.reason})</em>`;
+          html += '</div>';
+        });
+
+        if (result.clarifying_questions?.length > 0) {
+          html += '<br>⚠️ <strong>Claude flagged these questions before finalizing:</strong><ul>';
+          result.clarifying_questions.forEach(q => { html += `<li>${q}</li>`; });
+          html += '</ul>';
+        }
+
+        showStatus('success', html);
+        document.getElementById('json-input').value = '';
+
+      } catch(e) {
+        showStatus('error', `❌ Submission failed: ${e.message}`);
+      } finally {
+        btn.disabled    = false;
+        btn.textContent = 'Submit to Google Drive';
+      }
+    }
+
+    function clearForm() {
+      document.getElementById('json-input').value = '';
+      document.getElementById('status').style.display = 'none';
+    }
+
+    function showStatus(type, html) {
+      const el      = document.getElementById('status');
+      el.className  = type;
+      el.innerHTML  = html;
+      el.style.display = 'block';
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  </script>
+
+</body>
+</html>
